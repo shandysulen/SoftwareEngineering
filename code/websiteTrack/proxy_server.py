@@ -1,14 +1,11 @@
 
 import socket
-import threading
-import urllib.request
-import signal
 import sys
 
 config = {
-    "HOST" : "0.0.0.0",
+    "HOST" : '',
     "PORT" : 10000,
-    "MAX_REQUEST_LEN" : 1024,
+    "MAX_REQUEST_LEN" : 4096,
     "CONNECTION_TIMEOUT" : 5
 }
 
@@ -16,108 +13,102 @@ class ProxyServer:
     """ The HTTP proxy server class used to capture GET requests and responses """
 
     def __init__(self, config):
-        # signal.signal(signal.SIGINT, self.stopServer) # Shutdown on Ctrl+C
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # Create a TCP socket, AF_INET = IPv4
-        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # Re-use the socket
-        self.socket.bind((config['HOST'], config['PORT'])) # bind the socket to a host IP address and a port
-        self.socket.listen(10) # allow 1 unaccepted connections before refusing others
-        self.__clients = []
-        print("Server listening on port", config["PORT"] +  "...")
+        try:
+            # signal.signal(signal.SIGINT, self.stopServer) # Shutdown on Ctrl+C
+            self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # Create a TCP socket, AF_INET = IPv4
+            self.s.bind((config['HOST'], config['PORT'])) # bind the socket to a host IP address and a port
+            self.s.listen(10) # allow 10 unaccepted connections before refusing others
+            print("Server listening on port", str(config["PORT"]) + "...")
+        except Exception as e:
+            print("Unable to initialize socket...")
+            sys.exit() # Successful termination
+
 
     def listenForClient(self):
         """ Listen for clients to connect with """
         while True:
-            (client_socket, client_address) = self.socket.accept() # Establish the connection
-            print("Client connection established with", client_address + ":" + client_socket + "...")
-            self.addToClients(client_socket)
-            self.printClients()
-            d = threading.Thread(name=self._getClientName(client_address), target=self.proxy_thread, args=(client_socket, client_address))
-            d.setDaemon(True)
-            d.start()
-        print("About to stop server")
-        self.stopServer(0,0)
 
-    def proxy_thread(self, conn, client_addr):
-        """ A thread to handle a request from the browser """
-        b_request = conn.recv(config['MAX_REQUEST_LEN']) # get the request from browser | Size limit: 1K
-        print("Request:", b_request)
-        str_request = str(b_request, 'utf-8')
-        print("String Request:", str_request)
-        first_line = str_request.split('\n')[0] # parse the first line and remove newline character
-        print("First line:", first_line)
-        url = first_line.split(' ')[1] # get url
-        print("URL:", url)
+            # Establish connection
+            (conn, address) = self.s.accept()
+            print("Client connection established with", str(conn))
 
-        # find the webserver and port
-        http_pos = url.find("://") # find pos of ://
-        if (http_pos == -1):
-            temp = url
-        else:
-            temp = url[(http_pos+3):] # get the rest of url
+            # Get request from browser | Size limit: 1K
+            b_request = conn.recv(config['MAX_REQUEST_LEN'])
 
-        port_pos = temp.find(":") # find the port pos (if any)
+            if (len(b_request) == 0):
+                continue
 
-        # find end of web server
-        webserver_pos = temp.find("/")
-        if webserver_pos == -1:
-            webserver_pos = len(temp)
+            print("Request:", b_request)
+            str_request = str(b_request, 'utf-8')
+            print("String Request:", str_request)
+            first_line = str_request.split('\n')[0] # parse the first line and remove newline character
+            print("First line:", first_line)
+            url = first_line.split(' ')[1] # get url
+            print("URL:", url)
 
-        webserver = ""
-        port = -1
-        if (port_pos==-1 or webserver_pos < port_pos):      # default port
-            port = 80
-            webserver = temp[:webserver_pos]
-        else:                                               # specific port
-            port = int((temp[(port_pos+1):])[:webserver_pos-port_pos-1])
-            webserver = temp[:port_pos]
+            # Find domain and port
+            if url.find("http://www.") != -1 and (url.find(":80") != -1 or url.find(":443") != -1):
+                domain = url[url.find("http://www.") + 11 : url.find(":")]
+                port = int(url[url.find(":") + 1 : ])
+            elif url.find("www.") != -1 and (url.find(":80") != -1 or url.find(":443") != -1):
+                domain = url[url.find("www.") + 4 : url.find(":")]
+                port = int(url[url.find(":") + 1 : ])
+            elif url.find("http://") != -1 and (url.find(":80") != -1 or url.find(":443") != -1):
+                domain = url[url.find("http://") + 7 : url.find(":")]
+                port = int(url[url.find(":") + 1 : ])
+            elif url.find("www.") != -1 and url.find(":80") == -1 and url.find(":443") == -1:
+                domain = url[url.find("www.") + 4 : ]
+                port = 80
+            elif url.find("http://") == -1 and url.find("www.") == -1 and url.find(":80") == -1 and url.find(":443") == -1:
+                domain = url[ : url.find(":")]
+                port = int(url[url.find(":") + 1 : ])
+            else:
+                domain = url
+                port = 80
 
-        print("Website:", webserver)
-        print("Port:", port)
+            print("Domain:", domain)
+            print("Port:", port)
 
-        try:
-            # create a socket to connect to the web server
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            print("Socket created to send requests to and receive responses from web server...")
-            s.settimeout(config['CONNECTION_TIMEOUT'])
-            s.connect((webserver, port))
-            s.sendall(b_request) # send request to webserver
+            try:
+                # Create web server socket for proxy to connect to web server
+                webserver_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                print("Socket created to send requests to and receive responses from web server...")
+                # webserver_socket.settimeout(config['CONNECTION_TIMEOUT']) POSSIBLE PROBLEM?
+                webserver_socket.connect(("www." + domain, port)) # connect to webserver
+                print("Connected to remote server...")
+                request = "GET " + "http://www." + domain + " HTTP/1.1\r\n\r\n"
+                webserver_socket.send(str.encode(request)) # send request to webserver
+                print(str.encode(request))
+                print("Successfully sent request...")
 
-            while 1:
-               data = s.recv(config['MAX_REQUEST_LEN'])          # receive data from web server
-               print("Data received:", data)
-               if (len(data) > 0):
-                   conn.send(data)                               # send response back to client
-               else:
-                   print("PROXY CONNECTION GOT NO DATA FROM WEB SERVER")
-                   break
-            s.close() #Web server socket closed
-            conn.close() #Client socket closed
-        except socket.error as error_msg:
-            print('ERROR: from shando',client_addr,error_msg)
-            if s:
-                s.close()
-            if conn:
+                # Receive data from web server
+                while True:
+                    data = webserver_socket.recv(config['MAX_REQUEST_LEN'])
+                    data_string = str(data, 'utf-8')
+                    print("Data received:", data_string)
+
+                    # Send response back to client
+                    if (len(data) > 0):
+                        conn.send(data)
+                    else:
+                        print("PROXY CONNECTION GOT NO DATA FROM WEB SERVER")
+                        break;
+
+                # Close socket connections
+                webserver_socket.close()
                 conn.close()
 
-
-    def _getClientName(self, cli_addr):
-        """ Return the clientName """
-        return cli_addr
-
-    def addToClients(self, client_socket):
-        self.__clients.append(client_socket)
-
-    def printClients(self):
-        for i in range(len(self.__clients)):
-            print(i,":", self.__clients[i])
-
-
-    def stopServer(self, signum, frame):
-        """ Handle the exiting server by gracefully closing out """
-        self.socket.close()
-        sys.exit(0)
-
+            except socket.error as error_msg:
+                # Print error and close socket connections
+                print("shando", error_msg)
+                webserver_socket.close()
+                conn.close()
 
 if __name__ == "__main__":
-    server = ProxyServer(config)
-    server.listenForClient()
+
+    try:
+        server = ProxyServer(config)
+        server.listenForClient()
+    except KeyboardInterrupt:
+        print("Exiting application...")
+        sys.exit(0) # Successful termination
