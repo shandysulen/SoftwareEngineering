@@ -1,10 +1,9 @@
 import sys
-# sys.path.append('./kitten.py')
 sys.path.append('./lib/')
 from os.path import expanduser
 from PyQt5.QtWidgets import (QMainWindow, QApplication, QPushButton, QWidget, QAction, QTabWidget,
                             QVBoxLayout, QHBoxLayout, QLabel, QCheckBox, QSizePolicy, QInputDialog,
-                            QFileDialog, QMessageBox)
+                            QFileDialog, QMessageBox, QLineEdit)
 from PyQt5.QtGui import QIcon, QPixmap
 from PyQt5.QtCore import pyqtSlot, QCoreApplication
 from mouseTrack import mouseClickAndLocation
@@ -14,29 +13,27 @@ import pandas as pd
 import numpy as np
 import math
 import string
+import seaborn as sns
 
 import matplotlib
 # Make sure that we are using QT5
 matplotlib.use('Qt5Agg')
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+from matplotlib import pyplot as plt
 
 class MyMplCanvas(FigureCanvas):
     """Ultimately, this is a QWidget (as well as a FigureCanvasAgg, etc.)."""
 
     def __init__(self, parent=None, width=5, height=4, dpi=100):
-        fig = Figure(figsize=(width, height), dpi=dpi)
-        self.axes = fig.add_subplot(111)
+        self.fig = self.compute_initial_figure()
+        self.canvas = FigureCanvas(self.fig)
 
-        self.compute_initial_figure()
-
-        FigureCanvas.__init__(self, fig)
-        self.setParent(parent)
-
-        FigureCanvas.setSizePolicy(self,
+        self.canvas.setSizePolicy(self,
                                    QSizePolicy.Expanding,
                                    QSizePolicy.Expanding)
-        FigureCanvas.updateGeometry(self)
+        self.canvas.updateGeometry(self)
+        self.show()
 
     def compute_initial_figure(self):
         pass
@@ -44,22 +41,33 @@ class MyMplCanvas(FigureCanvas):
 class MouseLocPlot(MyMplCanvas):
 
     def compute_initial_figure(self):
-        t = pd.read_csv('./data/mouseLoc.csv')['x']
-        s = pd.read_csv('./data/mouseLoc.csv')['y']
-        self.axes.plot(t, s)
-        # g = sns.jointplot("x", "y", data=df[['x', 'y']], kind = "kde", space=0)
+        # websites = pd.read_csv('./data/websites.csv')
+        # example data, real data read in from csv
+        websites = 'Facebook', 'Reddit', 'Canvas', 'GitHub',
+        times = [12,11,3,30]
+        
+        cmap=matplotlib.cm.Oranges(np.arange(0.2,1,.1))
+        my_circle=plt.Circle( (0,0), 0.7, color='white')
+        plt.pie(times, labels=websites, colors=cmap)
+        g=plt.gcf()
+        g.gca().add_artist(my_circle)
+        return g
 
 class MouseClickPlot(MyMplCanvas):
 
     def compute_initial_figure(self):
-        t = pd.read_csv('./data/mouseClicks.csv')['x']
-        s = pd.read_csv('./data/mouseClicks.csv')['y']
-        self.axes.plot(t, s, 'ro')
+        loc = pd.read_csv('mouseLoc.csv')
+        clicks = pd.read_csv('mouseClicks.csv')
+
+        # g is type Figure
+        g = sns.kdeplot(loc.x, loc.y, cmap="Oranges", shade=True)
+        g = plt.scatter(clicks.x, clicks.y, c="w", marker="+")
+        return g
 
 class KeyboardPlot(MyMplCanvas):
 
     def compute_initial_figure(self):
-        keys = list(pd.read_csv('./data/keyboard.csv')['Key'])
+        keys = list(pd.read_csv('keyboard.csv')['Key'])
         unique_keys = list(set(keys))
         freq = []
         for key in unique_keys:
@@ -74,12 +82,42 @@ class KeyboardPlot(MyMplCanvas):
         self.axes.set_xticks(ind)
         self.axes.set_xticklabels(unique_keys)
 
+class WebsitePlot(MyMplCanvas):
+
+    def compute_initial_figure(self):
+        # websites = pd.read_csv('./data/websites.csv')
+        # example data, real data read in from csv
+        websites = 'Facebook', 'Reddit', 'Canvas', 'GitHub',
+        times = [12,11,3,30]
+        
+        cmap=matplotlib.cm.Oranges(np.arange(0.2,1,.1))
+        my_circle=plt.Circle( (0,0), 0.7, color='white')
+        plt.pie(times, labels=websites, colors=cmap)
+        g=plt.gcf()
+        g.gca().add_artist(my_circle)
+        return g
+        
+class ApplicationPlot(MyMplCanvas):
+
+    def compute_initial_figure(self):
+        # websites = pd.read_csv('./data/programs.csv')
+        # example data, real data read in from csv
+        apps = 'Steam', 'Google Chrome', 'Photoshop', 'Minesweeper',
+        times = [12,11,3.4,22]
+        
+        cmap=matplotlib.cm.Oranges(np.arange(0.2,1,.1))
+        my_circle=plt.Circle( (0,0), 0.7, color='white')
+        plt.pie(times, labels=apps, colors=cmap)
+        g=plt.gcf()
+        g.gca().add_artist(my_circle)
+        return g
+
 class App(QMainWindow):
 
     def __init__(self):
         super().__init__()
         self.setWindowTitle('kitten')
-        self.setWindowIcon(QIcon('./images/kitten_16'))
+        self.setWindowIcon(QIcon('./images/logo-256x256'))
         self.setGeometry(100, 100, 500, 400)
         self.home = Home(self)
         self.setCentralWidget(self.home)
@@ -106,6 +144,10 @@ class Home(QWidget):
         self.websites = None
         self.keyboard = None
 
+        # local variables to check when data is to be collected
+        self.websites_to_record = []
+        self.programs_to_record = []
+
         # initialize tab screen
         self.tabs = QTabWidget()
         self.home_tab = QWidget()
@@ -113,6 +155,8 @@ class Home(QWidget):
         self.mouse_movement_tab = QWidget()
         self.mouse_click_tab = QWidget()
         self.keyboard_tab = QWidget()
+        self.websites_tab = QWidget()
+        self.programs_tab = QWidget()
         self.settings_tab = QWidget()
 
         # Add tabs
@@ -121,6 +165,8 @@ class Home(QWidget):
         self.tabs.addTab(self.mouse_movement_tab, "Mouse Movements")
         self.tabs.addTab(self.mouse_click_tab, "Mouse Clicks")
         self.tabs.addTab(self.keyboard_tab, "Keyboard Input")
+        self.tabs.addTab(self.websites_tab, "Websites")
+        self.tabs.addTab(self.programs_tab, "Programs")
         self.tabs.addTab(self.settings_tab, "Settings")
 
         self.make_home_tab()
@@ -128,42 +174,37 @@ class Home(QWidget):
         self.make_mouse_movement_tab()
         self.make_mouse_click_tab()
         self.make_keyboard_tab()
+        self.make_websites_tab()
+        self.make_programs_tab()
         self.make_settings_tab()
 
         self.layout.addWidget(self.tabs)
         self.setLayout(self.layout)
 
     def make_home_tab(self):
-        # Create welcome label
-        kitten_lbl = QLabel(self)
-        kitten_lbl.setText('Hi! Welcome to kitten :)')
-        row_1 = QHBoxLayout()
-        row_1.addStretch()
-        row_1.addWidget(kitten_lbl)
-        row_1.addStretch()
 
         # Add kitten image
         kitten_image_lbl = QLabel(self)
-        kitten_image_lbl.setPixmap(QPixmap('./images/kitten_image.png'))
-        row_2 = QHBoxLayout()
-        row_2.addStretch()
-        row_2.addWidget(kitten_image_lbl)
-        row_2.addStretch()
+        kitten_image_lbl.setPixmap(QPixmap('./images/full-logo-375x135'))
+        row_1 = QHBoxLayout()
+        row_1.addStretch()
+        row_1.addWidget(kitten_image_lbl)
+        row_1.addStretch()
+        row_1.addStretch()
 
     	# just another quit button for now
         data_select_btn = QPushButton('quit', self)
         data_select_btn.clicked.connect(QCoreApplication.instance().quit)
-        row_3 = QHBoxLayout()
-        row_3.addStretch()
-        row_3.addWidget(data_select_btn)
-        row_3.addStretch()
+        row_2 = QHBoxLayout()
+        row_2.addStretch()
+        row_2.addWidget(data_select_btn)
+        row_2.addStretch()
 
         v_box = QVBoxLayout()
         v_box.addStretch(1)
         v_box.addLayout(row_1)
+        v_box.addStretch(1)
         v_box.addLayout(row_2)
-        v_box.addLayout(row_3)
-        v_box.addStretch(1) # This takes up space at the bottom.
 
         self.home_tab.setLayout(v_box)
 
@@ -191,21 +232,26 @@ class Home(QWidget):
         row_3.addStretch()
 
         mouse_check_box = QCheckBox('running programs', self)
+        programs_le = QLineEdit()
+        programs_le.setPlaceholderText('Ex: \'slack,photoshop \' ')
         mouse_check_box.stateChanged.connect(self.switch_running_program_state)
         row_4 = QHBoxLayout()
         row_4.addStretch()
         row_4.addWidget(mouse_check_box)
-        row_4.addStretch()
+        row_4.addWidget(programs_le)
 
         mouse_check_box = QCheckBox('running websites', self)
+        websites_le = QLineEdit()
+        websites_le.setPlaceholderText('Ex: \'facebook.com,twitter.com \' ')
         mouse_check_box.stateChanged.connect(self.switch_running_website_state)
         row_5 = QHBoxLayout()
         row_5.addStretch()
         row_5.addWidget(mouse_check_box)
-        row_5.addStretch()
+        row_5.addWidget(websites_le)
+        # row_5.addStretch()
 
         data_select_btn = QPushButton('Begin Collecting Data!', self)
-        data_select_btn.clicked.connect(self.initiate_data_collection)
+        data_select_btn.clicked.connect(lambda: self.initiate_data_collection(websites_le, programs_le))
         row_6 = QHBoxLayout()
         row_6.addStretch()
         row_6.addWidget(data_select_btn)
@@ -325,6 +371,68 @@ class Home(QWidget):
 
         self.keyboard_tab.setLayout(v_box)
 
+    def make_websites_tab(self):
+        v_box = QVBoxLayout()
+
+        lbl = QLabel(self)
+        lbl.setText('Websites')
+        row_1 = QHBoxLayout()
+        row_1.addStretch()
+        row_1.addWidget(lbl)
+        row_1.addStretch()
+
+        row_2 = QHBoxLayout()
+        row_2.addStretch()
+
+        vis_btn = QPushButton('Visualize Data', self)
+        download_btn = QPushButton('Download Data', self)
+        # vis_btn.clicked.connect(lambda: self.plot_keyboard_input(row_2)) # REPLACE WITH VISUALIZE WEBSITE DATA
+        download_btn.clicked.connect(lambda: self.download_data('websites.csv'))
+        row_3 = QHBoxLayout()
+        row_3.addStretch()
+        row_3.addWidget(vis_btn)
+        row_3.addWidget(download_btn)
+        row_3.addStretch()
+
+        v_box.addLayout(row_1)
+        v_box.addStretch(1)
+        v_box.addLayout(row_2)
+        v_box.addStretch(1)
+        v_box.addLayout(row_3)
+
+        self.websites_tab.setLayout(v_box)
+
+    def make_programs_tab(self):
+        v_box = QVBoxLayout()
+
+        lbl = QLabel(self)
+        lbl.setText('Programs')
+        row_1 = QHBoxLayout()
+        row_1.addStretch()
+        row_1.addWidget(lbl)
+        row_1.addStretch()
+
+        row_2 = QHBoxLayout()
+        row_2.addStretch()
+
+        vis_btn = QPushButton('Visualize Data', self)
+        download_btn = QPushButton('Download Data', self)
+        # vis_btn.clicked.connect(lambda: self.plot_keyboard_input(row_2)) # REPLACE WITH VISUALIZE WEBSITE DATA
+        download_btn.clicked.connect(lambda: self.download_data('programs.csv'))
+        row_3 = QHBoxLayout()
+        row_3.addStretch()
+        row_3.addWidget(vis_btn)
+        row_3.addWidget(download_btn)
+        row_3.addStretch()
+
+        v_box.addLayout(row_1)
+        v_box.addStretch(1)
+        v_box.addLayout(row_2)
+        v_box.addStretch(1)
+        v_box.addLayout(row_3)
+
+        self.programs_tab.setLayout(v_box)
+
     def make_settings_tab(self):
 
         # kitten_lbl = QLabel(self)
@@ -438,7 +546,7 @@ class Home(QWidget):
             except:
                 QMessageBox.about(self, "Missing Data", "You do not have any data stored in Kitten. Please collect data before visualizing.")
 
-    def initiate_data_collection(self):
+    def initiate_data_collection(self, websites_textbox, programs_textbox):
         # Check for which boxes are ticked and start collecting data for those boxes
         if self.mouse_movement_selection and self.mouse_movement is None:
             self.record_mouse_movement()
@@ -446,10 +554,29 @@ class Home(QWidget):
             self.record_mouse_clicks()
         if self.keyboard_input_selection and self.keyboard is None:
             self.record_keyboard_input()
+        
+        ## Programs
         if self.running_program_selection and self.programs is None:
+            self.programs_to_record = programs_textbox.text().split(',')
+            print("You want to record:", self.programs_to_record)
+            print("Recording NOT in sesh")
             self.record_running_programs()
+        if self.running_program_selection and self.programs is not None:
+            self.programs_to_record = programs_textbox.text().split(',')
+            print("You want to record:", self.programs_to_record)
+            print("Recording already in sesh") ### SHATS YOU NEED TO REPLACE THIS 'RECORDING IN SESH' WITH STOPPING THE RECORDING AND STARTING A NEW ONE WITH NEW PROGRAMS LIST
+
+        ## Websites
         if self.running_website_selection and self.websites is None:
+            self.websites_to_record = websites_textbox.text().split(',')
+            print("You want to record:", self.websites_to_record)
+            print("Recording NOT in sesh")
             self.record_running_websites()
+        if self.running_website_selection and self.websites is not None:
+            self.websites_to_record = websites_textbox.text().split(',')
+            print("You want to record:", self.websites_to_record)
+            print("Recording already in sesh") ### SHATS YOU NEED TO REPLACE THIS 'RECORDING IN SESH' WITH STOPPING THE RECORDING AND STARTING A NEW ONE WITH NEW WEBSITES LIST
+            
 
     def stop_data_collection(self):
         if self.mouse_movement is not None:
@@ -472,7 +599,7 @@ class Home(QWidget):
         # # initialize all event triggers to be clear (don't record anything)
 
         # create mouseListener thread
-        self.mouse_movement = mouseClickAndLocation.MOUSETHREAD()
+        self.mouse_movement = mouseClickAndLocation.MOUSETHREAD(getScreenSize())
         self.mouse_movement.recordScroll = False
         self.mouse_movement.recordClicks = False
         self.mouse_movement.recordLoc = False
@@ -485,7 +612,7 @@ class Home(QWidget):
         # # initialize all event triggers to be clear (don't record anything)
 
         # create mouseListener thread
-        self.mouse_clicks = mouseClickAndLocation.MOUSETHREAD()
+        self.mouse_clicks = mouseClickAndLocation.MOUSETHREAD(getScreenSize())
         self.mouse_clicks.recordScroll = False
         self.mouse_clicks.recordClicks = False
         self.mouse_clicks.recordLoc = False
@@ -534,8 +661,15 @@ class Home(QWidget):
             except:
                 QMessageBox.about(self, "Missing Data", "You do not have any data stored in Kitten. Please collect data before downloading.")
 
+def getScreenSize():
+    ''' Returns screen size '''
+    screen = app.primaryScreen()
+    screenSize = screen.size()
+    print('Detecting resolution...\nwidth: %d \nheight: %d' % (screenSize.width(), screenSize.height()))
+    return screen.size()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
+    getScreenSize()
     ex = App()
     sys.exit(app.exec_())
