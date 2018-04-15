@@ -2,7 +2,7 @@
 class Node(object):
  
     def __init__(self, app_name, timeLog, curStart, curEnd, totalTime, prev, next, running):
-        self.appName = app_name # .exe name as seen by computer
+        self.app_name = app_name # .exe name as seen by computer
         self.timeLog = timeLog
         self.curStart = curStart
         self.curEnd = curEnd
@@ -30,7 +30,6 @@ class AppLog(object):
             self.tail = new_node
         new_node.running = False
 
- 
     def remove(self, app_name):
         current_node = self.head
  
@@ -48,26 +47,34 @@ class AppLog(object):
             current_node = current_node.next
  
     def show(self):
-        print ("Show list appName:")
+        print("Show list appName:")
         current_node = self.head
         while current_node is not None:
-            print (current_node.prev.appName) if hasattr(current_node.prev, "appName") else None,
-            print (current_node.appName),
-            print (current_node.totalTime),
-            print (current_node.next.appName) if hasattr(current_node.next, "appName") else None
+            print(current_node.prev.app_name) if hasattr(current_node.prev, "app_name") else None,
+            print(current_node.app_name),
+            print(current_node.totalTime),
+            print(current_node.next.app_name) if hasattr(current_node.next, "app_name") else None
  
             current_node = current_node.next
-        print ("*"*50)
+        print("*"*50)
 
-    def getTime(self, app_name):
-        current_node = getNode(app_name)
-            return current_node.totalTime
-            
+    def get_node(self, app_name):
+        current_node = self.head
+        while current_node is not None:
+            if app_name == current_node.app_name:
+                return current_node
+            else:
+                current_node = current_node.next
 
+    def get_time(self, app_name):
+        current_node = self.get_node(app_name)
+        return current_node.totalTime
 
     def update(self, app_name,time, unitSleep, curStart):
-        current_node = getNode(app_name)
-        if(current_node.running == False):
+        current_node = self.get_node(app_name)
+        if self.find(app_name) is not True:
+            self.add(app_name, None)
+        if current_node.running is not True:
             current_node.timeLog[0][curStart+1] = time
             current_node.totalTime = current_node.totalTime+unitSleep
         else:
@@ -75,10 +82,8 @@ class AppLog(object):
             current_node.timeLog[2][curStart+1] += unitSleep
             current_node.totalTime = current_node.totalTime + unitSleep
 
-
     def end(self, app_name, time,unitSleep, curStart):
-
-        current_node = getNode(app_name)
+        current_node = self.get_node(app_name)
         #adds unitsleep time to duration
         current_node.timeLog[0][curStart+1] += unitSleep
         current_node.totalTime += unitSleep
@@ -87,22 +92,27 @@ class AppLog(object):
         current_node.curStart+=1 #correct way to increment?
         current_node.running = False
 
-    def getNode(self, app_name):
-        current_node = self.head
-        while current_node is not None:
-            if(app_name == current_node.appName):
-                return current_node
-            else:
-                current_node = current_node.next
 
     #initilizes running status of applications to false for extra precautions (save data in case of crash)
-    def init(self, app_name):
-        self.current_node = self.head
+    def init(self):
+        current_node = self.head
         while current_node is not None:
             current_node.running = False
             current_node = current_node.next
 
+    def find(self, name):
+        current_node = self.head
+        while current_node is not None:
+            if current_node.app_name == name:
+                return True
+        return False
 
+    def print(self):
+        current_node = self.head
+        while current_node is not None:
+            #if current_node.appName == name:
+            print(current_node.totalTime)
+            print(current_node.app_name)
 
 
 # d = AppLog()
